@@ -1,8 +1,8 @@
 build:
-	@go build -o out && ./out
+	@go build -o Chirpy && ./Chirpy
 
 run: build
-	@./out
+	@./Chirpy
 
 test: 
 	@go test ./... -v
