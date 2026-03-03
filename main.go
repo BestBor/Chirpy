@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/BestBor/Chirpy/internal/auth"
 	"github.com/BestBor/Chirpy/internal/database"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -52,9 +53,11 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", healthHandler)
 	// Users
 	mux.HandleFunc("POST /api/users", cfg.createUserHandler)
+	// Session
+	mux.HandleFunc("POST /api/login", cfg.userLogin)
 	// Chirps
 	mux.HandleFunc("GET /api/chirps", cfg.getAllChirpsHandler)
-	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.getChirpHanlder)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.getChirpHandler)
 	mux.HandleFunc("POST /api/chirps", cfg.createChirpHandler)
 	// mux.HandleFunc("POST /api/validate_chirp", validationHandler)
 	// /admin/
@@ -80,8 +83,9 @@ type newChirpRequest struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
-type createUserRequest struct {
-	Email string `json:"email"`
+type userRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type User struct {
@@ -140,7 +144,7 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	var req createUserRequest
+	var req userRequest
 
 	dec := json.NewDecoder(r.Body)
 
@@ -149,13 +153,54 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	dbUser, err := cfg.db.CreateUser(r.Context(), req.Email)
+	hashedPass, err := auth.HashPassword(req.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error hashing password")
+		return
+	}
+
+	dbUser, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          req.Email,
+		HashedPassword: hashedPass,
+	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "problem creating user")
 		return
 	}
 
 	respondWithJSON(w, http.StatusCreated, User{
+		ID:        dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email:     dbUser.Email,
+	})
+
+}
+
+// Users session
+func (cfg *apiConfig) userLogin(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
+	var req userRequest
+
+	dec := json.NewDecoder(r.Body)
+
+	if err := dec.Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Something went wrong")
+		return
+	}
+
+	dbUser, err := cfg.db.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+		return
+	}
+	if ok, err := auth.CheckPasswordHash(req.Password, dbUser.HashedPassword); err != nil || !ok {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, User{
 		ID:        dbUser.ID,
 		CreatedAt: dbUser.CreatedAt,
 		UpdatedAt: dbUser.UpdatedAt,
@@ -189,7 +234,7 @@ func (cfg *apiConfig) getAllChirpsHandler(w http.ResponseWriter, r *http.Request
 	respondWithJSON(w, http.StatusOK, res)
 }
 
-func (cfg *apiConfig) getChirpHanlder(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	chirpIDStr := r.PathValue("chirpID")
@@ -200,8 +245,6 @@ func (cfg *apiConfig) getChirpHanlder(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusBadRequest, "invalid chirp id")
 		return
 	}
-	fmt.Printf("UUID parsed: %v\n", chirpID)
-	fmt.Printf("UUID bytes: %x\n", chirpID)
 	dbChirp, err := cfg.db.GetChirp(r.Context(), chirpID)
 	if errors.Is(err, sql.ErrNoRows) {
 		respondWithError(w, http.StatusNotFound, "chirp not found")
