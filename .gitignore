@@ -1,2 +1,7 @@
 out
+Chirpy
+*.exe
+
+bin/
+
 .env

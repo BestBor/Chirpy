@@ -1,9 +1,18 @@
+BINARY=chirpy
+BIN_DIR=bin
+
 build:
-	@go build -o Chirpy && ./Chirpy
+	@mkdir -p $(BIN_DIR)
+	@go build -o $(BIN_DIR)/$(BINARY)
 
-run: build
-	@./Chirpy
+run:
+	@go run .
 
-test: 
+run-bin: build
+	@./$(BIN_DIR)/$(BINARY)
+
+test:
 	@go test ./... -v
 
+clean:
+	@rm -rf $(BIN_DIR)
