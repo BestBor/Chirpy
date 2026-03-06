@@ -13,9 +13,17 @@ RETURNING *;
 SELECT * FROM chirps
 ORDER BY created_at;
 
--- name: GetChirp :one
+-- name: GetAllChirpsByAuthorId :many
 SELECT * FROM chirps
-WHERE id = $1; 
+WHERE user_id = $1
+ORDER BY created_at;
+
+-- name: GetChirpById :one
+SELECT * FROM chirps
+WHERE id = $1;
+
+-- name: DeleteChirpById :exec
+DELETE FROM chirps WHERE id = $1;
 
 -- name: DeleteAllChirps :exec
 TRUNCATE TABLE chirps CASCADE;
