@@ -1,8 +1,13 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/argon2id"
@@ -65,4 +70,43 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	}
 	return id, nil
 
+}
+
+func GetBearerToken(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", errors.New("missing auth header")
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" || parts[1] == "" {
+		return "", errors.New("invalid auth header format")
+	}
+
+	return parts[1], nil
+}
+
+func MakeRefreshToken() string {
+	gen := make([]byte, 32)
+	// Read loads gen with cryptographically secure random bytes
+	// if this fails, the system cannot guarantee secure token generation,
+	// so the process must terminate
+	if _, err := rand.Read(gen); err != nil {
+		log.Fatal("failed to generate secure refresh token:", err)
+	}
+	return hex.EncodeToString(gen)
+}
+
+func GetAPIKey(headers http.Header) (string, error) {
+	apiKey := headers.Get("Authorization")
+	if apiKey == "" {
+		return "", errors.New("missing apiKey")
+	}
+
+	parts := strings.Split(apiKey, " ")
+	if len(parts) != 2 || parts[0] != "ApiKey" || parts[1] == "" {
+		return "", errors.New("invalid apiKey format")
+	}
+
+	return parts[1], nil
 }
